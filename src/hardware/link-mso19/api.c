@@ -30,8 +30,9 @@ static const uint32_t drvopts[] = {
 static const uint32_t devopts[] = {
 	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET,
 	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
-	SR_CONF_TRIGGER_TYPE | SR_CONF_LIST,
-	SR_CONF_TRIGGER_SLOPE | SR_CONF_SET,
+	// TODO matt: bring back triggers
+	// SR_CONF_TRIGGER_TYPE | SR_CONF_LIST,
+	// SR_CONF_TRIGGER_SLOPE | SR_CONF_SET,
 	SR_CONF_HORIZ_TRIGGERPOS | SR_CONF_SET,
 	SR_CONF_CAPTURE_RATIO | SR_CONF_SET,
 	SR_CONF_RLE | SR_CONF_SET,
@@ -59,7 +60,7 @@ static const char *trigger_slopes[2] = {
 
 static GSList *scan(struct sr_dev_driver *di, GSList *options)
 {
-	int i;
+	unsigned int i;
 	GSList *devices = NULL;
 	const char *conn = NULL;
 	const char *serialcomm = NULL;
@@ -172,6 +173,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 			chtype = (i == 0) ? SR_CHANNEL_ANALOG : SR_CHANNEL_LOGIC;
 			sr_channel_new(sdi, i, chtype, TRUE, channel_names[i]);
 		}
+		devices = g_slist_append(devices, sdi);
 	}
 
 	return std_scan_complete(di, devices);
@@ -206,7 +208,7 @@ static int dev_open(struct sr_dev_inst *sdi)
 	return SR_OK;
 }
 
-static int config_get(int key, GVariant **data,
+static int config_get(uint32_t key, GVariant **data,
 	const struct sr_dev_inst *sdi, const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -217,6 +219,8 @@ static int config_get(int key, GVariant **data,
 		return SR_ERR_ARG;
 
 	devc = sdi->priv;
+
+	printf("mso config_get %u\n", key);
 
 	switch (key) {
 	case SR_CONF_SAMPLERATE:
@@ -229,7 +233,7 @@ static int config_get(int key, GVariant **data,
 	return SR_OK;
 }
 
-static int config_set(int key, GVariant *data,
+static int config_set(uint32_t key, GVariant *data,
 	const struct sr_dev_inst *sdi, const struct sr_channel_group *cg)
 {
 	struct dev_context *devc;
@@ -237,10 +241,15 @@ static int config_set(int key, GVariant *data,
 	const char *slope;
 	int trigger_pos;
 	double pos;
+	int idx;
 
 	(void)cg;
 
 	devc = sdi->priv;
+
+	char *p = g_variant_print(data, TRUE);
+	printf("mso config_set %u = %s\n", key, p);
+	g_free(p);
 
 	switch (key) {
 	case SR_CONF_SAMPLERATE:
@@ -279,7 +288,7 @@ static int config_set(int key, GVariant *data,
 	return SR_OK;
 }
 
-static int config_list(int key, GVariant **data,
+static int config_list(uint32_t key, GVariant **data,
 	const struct sr_dev_inst *sdi, const struct sr_channel_group *cg)
 {
 	switch (key) {
@@ -288,9 +297,10 @@ static int config_list(int key, GVariant **data,
 	case SR_CONF_SAMPLERATE:
 		*data = std_gvar_samplerates_steps(ARRAY_AND_SIZE(samplerates));
 		break;
-	case SR_CONF_TRIGGER_TYPE:
-		*data = g_variant_new_string(TRIGGER_TYPE);
-		break;
+	// TODO matt trigger
+	// case SR_CONF_TRIGGER_TYPE:
+	// 	*data = g_variant_new_string(TRIGGER_TYPE);
+	// 	break;
 	default:
 		return SR_ERR_NA;
 	}
@@ -356,7 +366,7 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi)
 	/* TODO. */
 
 	serial_source_add(sdi->session, devc->serial, G_IO_IN, -1,
-			mso_receive_data, sdi);
+			mso_receive_data, (void*)sdi);
 
 	return SR_OK;
 }

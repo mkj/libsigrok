@@ -484,7 +484,7 @@ src_libdrivers_la_SOURCES += \
 	src/hardware/motech-lps-30x/api.c
 endif
 if HW_LINK_MSO19
-libsigrok_la_SOURCES += \
+src_libdrivers_la_SOURCES += \
     src/hardware/link-mso19/protocol.h \
     src/hardware/link-mso19/protocol.c \
     src/hardware/link-mso19/api.c

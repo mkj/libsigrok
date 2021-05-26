@@ -138,6 +138,8 @@ AS_IF([test "x$sr_have_libieee1284" = xyes],
 
 SR_ARG_OPT_PKG([libgio], [LIBGIO], , [gio-2.0 >= 2.24.0])
 
+SR_ARG_OPT_PKG([libudev], [LIBUDEV], , [libudev])
+
 # See if any of the (potentially platform specific) libs are available
 # which provide some means of Bluetooth communication.
 AS_IF([test "x$sr_have_libbluez" = xyes],
@@ -297,7 +299,7 @@ SR_DRIVER([MIC 985xx], [mic-985xx], [serial_comm])
 SR_DRIVER([Microchip PICkit2], [microchip-pickit2], [libusb])
 SR_DRIVER([Mooshimeter DMM], [mooshimeter-dmm], [bluetooth_comm libgio])
 SR_DRIVER([Motech LPS 30x], [motech-lps-30x], [serial_comm])
-SR_DRIVER([Link Instruments MSO-19], [link-mso19], [serial_comm])
+SR_DRIVER([Link Instruments MSO-19], [link-mso19], [serial_comm libudev])
 SR_DRIVER([Norma DMM], [norma-dmm], [serial_comm])
 SR_DRIVER([OpenBench Logic Sniffer], [openbench-logic-sniffer], [serial_comm])
 SR_DRIVER([PCE PCE-322A], [pce-322a], [serial_comm])
