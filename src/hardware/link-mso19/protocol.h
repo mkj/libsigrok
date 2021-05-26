@@ -176,26 +176,28 @@ struct rate_map {
 };
 
 static const struct rate_map rate_map[] = {
+	// values updated from mso19fcgi CalcRateMSBLSB()
+	{ SR_GHZ(1),   0x0000, 0 }, // RIS mode
 	{ SR_MHZ(200), 0x0205, 0 },
-	{ SR_MHZ(100), 0x0105, 0 },
-	{ SR_MHZ(50),  0x0005, 0 },
-	{ SR_MHZ(20),  0x0303, 0 },
-	{ SR_MHZ(10),  0x0308, 0 },
-	{ SR_MHZ(5),   0x030c, 0 },
-	{ SR_MHZ(2),   0x0330, 0 },
-	{ SR_MHZ(1),   0x0362, 0 },
-	{ SR_KHZ(500), 0x03c6, 0 },
-	{ SR_KHZ(200), 0x07f2, 0 },
-	{ SR_KHZ(100), 0x0fe6, 0 },
-	{ SR_KHZ(50),  0x1fce, 0 },
-	{ SR_KHZ(20),  0x4f86, 0 },
-	{ SR_KHZ(10),  0x9f0e, 0 },
-	{ SR_KHZ(5),   0x03c7, 0x20 },
-	{ SR_KHZ(2),   0x07f3, 0x20 },
-	{ SR_KHZ(1),   0x0fe7, 0x20 },
-	{ SR_HZ(500),  0x1fcf, 0x20 },
-	{ SR_HZ(200),  0x4f87, 0x20 },
-	{ SR_HZ(100),  0x9f0f, 0x20 },
+	{ SR_MHZ(100), 0x0103, 0 },
+	{ SR_MHZ(50),  0x0302, 0 },
+	{ SR_MHZ(20),  0x0308, 0 },
+	{ SR_MHZ(10),  0x0312, 0 },
+	{ SR_MHZ(5),   0x0326, 0 },
+	{ SR_MHZ(2),   0x0362, 0 },
+	{ SR_MHZ(1),   0x03c6, 0 },
+	{ SR_KHZ(500), 0x078e, 0 },
+	{ SR_KHZ(200), 0x0fe6, 0 },
+	{ SR_KHZ(100), 0x1fce, 0 },
+	{ SR_KHZ(50),  0x3f9e, 0 },
+	{ SR_KHZ(20),  0x9f0e, 0 },
+	{ SR_KHZ(10),  0x03c6, 0 },
+	{ SR_KHZ(5),   0x078e, 0x20 },
+	{ SR_KHZ(2),   0x0fe6, 0x20 },
+	{ SR_KHZ(1),   0x1fce, 0x20 },
+	{ SR_HZ(500),  0x3f9e, 0x20 },
+	{ SR_HZ(20),   0x9f0e, 0x20 },
+	{ SR_HZ(10),   0x9f0f, 0x20 }, // disabled in mso19fcgi ??
 };
 
 /* FIXME: Determine corresponding voltages */
