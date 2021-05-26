@@ -22,6 +22,72 @@
 #include <config.h>
 #include "protocol.h"
 
+/* bank agnostic registers */
+#define REG_CTL2		15
+
+/* bank 0 registers */
+#define REG_BUFFER		1
+#define REG_TRIGGER		2
+#define REG_CLKRATE1		9
+#define REG_CLKRATE2		10
+#define REG_DAC1		12
+#define REG_DAC2		13
+/* possibly bank agnostic: */
+#define REG_CTL1		14
+
+/* bank 2 registers (SPI/I2C protocol trigger) */
+#define REG_PT_WORD(x)		(x)
+#define REG_PT_MASK(x)		(x + 4)
+#define REG_PT_SPIMODE		8
+
+/* bits - REG_CTL1 */
+#define BIT_CTL1_RESETFSM	(1 << 0)
+#define BIT_CTL1_ARM		(1 << 1)
+#define BIT_CTL1_ADC_UNKNOWN4	(1 << 4)	/* adc enable? */
+#define BIT_CTL1_RESETADC	(1 << 6)
+#define BIT_CTL1_LED		(1 << 7)
+
+/* bits - REG_CTL2 */
+#define BITS_CTL2_BANK(x)	(x & 0x3)
+#define BIT_CTL2_SLOWMODE	(1 << 5)
+
+struct rate_map {
+	uint32_t rate;
+	uint16_t val;
+	uint8_t slowmode;
+};
+
+static const struct rate_map rate_map[] = {
+	// values updated from mso19fcgi CalcRateMSBLSB()
+	{ SR_GHZ(1),   0x0000, 0 }, // RIS mode
+	{ SR_MHZ(200), 0x0205, 0 },
+	{ SR_MHZ(100), 0x0103, 0 },
+	{ SR_MHZ(50),  0x0302, 0 },
+	{ SR_MHZ(20),  0x0308, 0 },
+	{ SR_MHZ(10),  0x0312, 0 },
+	{ SR_MHZ(5),   0x0326, 0 },
+	{ SR_MHZ(2),   0x0362, 0 },
+	{ SR_MHZ(1),   0x03c6, 0 },
+	{ SR_KHZ(500), 0x078e, 0 },
+	{ SR_KHZ(200), 0x0fe6, 0 },
+	{ SR_KHZ(100), 0x1fce, 0 },
+	{ SR_KHZ(50),  0x3f9e, 0 },
+	{ SR_KHZ(20),  0x9f0e, 0 },
+	{ SR_KHZ(10),  0x03c6, 0 },
+	{ SR_KHZ(5),   0x078e, 0x20 },
+	{ SR_KHZ(2),   0x0fe6, 0x20 },
+	{ SR_KHZ(1),   0x1fce, 0x20 },
+	{ SR_HZ(500),  0x3f9e, 0x20 },
+	{ SR_HZ(20),   0x9f0e, 0x20 },
+	{ SR_HZ(10),   0x9f0f, 0x20 }, // disabled in mso19fcgi ??
+};
+
+/* FIXME: Determine corresponding voltages */
+static const uint16_t la_threshold_map[] = {
+	0x8600, 0x8770, 0x88ff, 0x8c70, 0x8eff, 0x8fff,
+};
+
+
 /* serial protocol */
 #define mso_trans(a, v) \
 	(((v) & 0x3f) | (((v) & 0xc0) << 6) | (((a) & 0xf) << 8) | \
@@ -30,7 +96,7 @@
 static const char mso_head[] = { 0x40, 0x4c, 0x44, 0x53, 0x7e };
 static const char mso_foot[] = { 0x7e };
 
-SR_PRIV int mso_send_control_message(struct sr_serial_dev_inst *serial,
+static int mso_send_control_message(struct sr_serial_dev_inst *serial,
 				     uint16_t payload[], int n)
 {
 	int i, w, ret, s = n * 2 + sizeof(mso_head) + sizeof(mso_foot);
