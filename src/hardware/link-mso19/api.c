@@ -48,12 +48,6 @@ static const char *channel_names[] = {
 	"DSO", "0", "1", "2", "3", "4", "5", "6", "7",
 };
 
-static const uint64_t samplerates[] = {
-	SR_HZ(100),
-	SR_MHZ(200),
-	SR_HZ(100),
-};
-
 static const char *trigger_slopes[2] = {
 	"r", "f",
 };
@@ -257,10 +251,10 @@ static int config_set(uint32_t key, GVariant *data,
 		return mso_configure_rate(sdi, g_variant_get_uint64(data));
 	case SR_CONF_LIMIT_SAMPLES:
 		num_samples = g_variant_get_uint64(data);
-		if (num_samples != 1024) {
-			sr_err("Only 1024 samples are supported.");
-			return SR_ERR_ARG;
-		}
+		// if (num_samples > 1024) {
+		// 	sr_err("Max 1024 samples are supported.");
+		// 	return SR_ERR_ARG;
+		// }
 		devc->limit_samples = num_samples;
 		break;
 	case SR_CONF_CAPTURE_RATIO:
@@ -291,19 +285,30 @@ static int config_set(uint32_t key, GVariant *data,
 static int config_list(uint32_t key, GVariant **data,
 	const struct sr_dev_inst *sdi, const struct sr_channel_group *cg)
 {
+	size_t len;
+	const uint64_t *rates;
+
+	printf("mso %s %u\n", __func__, key);
+
 	switch (key) {
 	case SR_CONF_DEVICE_OPTIONS:
 		return STD_CONFIG_LIST(key, data, sdi, cg, NO_OPTS, drvopts, devopts);
 	case SR_CONF_SAMPLERATE:
-		*data = std_gvar_samplerates_steps(ARRAY_AND_SIZE(samplerates));
+		rates = mso_get_sample_rates(&len);
+		*data = std_gvar_samplerates(rates, len);
+		g_free(rates);
 		break;
 	// TODO matt trigger
 	// case SR_CONF_TRIGGER_TYPE:
 	// 	*data = g_variant_new_string(TRIGGER_TYPE);
 	// 	break;
 	default:
+		printf("return SR_ERR_NA\n");
 		return SR_ERR_NA;
 	}
+	char *p = g_variant_print(*data, TRUE);
+	printf("return OK, %s\n", p);
+	g_free(p);
 
 	return SR_OK;
 }

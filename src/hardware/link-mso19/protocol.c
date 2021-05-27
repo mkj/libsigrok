@@ -73,13 +73,13 @@ static const struct rate_map rate_map[] = {
 	{ SR_KHZ(100), 0x1fce, 0 },
 	{ SR_KHZ(50),  0x3f9e, 0 },
 	{ SR_KHZ(20),  0x9f0e, 0 },
-	{ SR_KHZ(10),  0x03c6, 0 },
+	{ SR_KHZ(10),  0x03c6, 0x20 },
 	{ SR_KHZ(5),   0x078e, 0x20 },
 	{ SR_KHZ(2),   0x0fe6, 0x20 },
 	{ SR_KHZ(1),   0x1fce, 0x20 },
 	{ SR_HZ(500),  0x3f9e, 0x20 },
 	{ SR_HZ(20),   0x9f0e, 0x20 },
-	{ SR_HZ(10),   0x9f0f, 0x20 }, // disabled in mso19fcgi ??
+	// { SR_HZ(10),   0x9f0f, 0x20 }, // disabled in mso19fcgi ??
 };
 
 /* FIXME: Determine corresponding voltages */
@@ -121,7 +121,7 @@ static int mso_send_control_message(struct sr_serial_dev_inst *serial,
 
 	w = 0;
 	while (w < s) {
-		ret = serial_write_blocking(serial, buf + w, s - w, 0); // TODO: timeout?
+		ret = serial_write_blocking(serial, buf + w, s - w, 1000); // TODO: timeout?
 		if (ret < 0) {
 			ret = SR_ERR;
 			goto free;
@@ -133,6 +133,17 @@ free:
 	g_free(buf);
 ret:
 	return ret;
+}
+
+SR_PRIV const uint64_t *mso_get_sample_rates(size_t *ret_len)
+{
+	uint64_t *rates = g_new(uint64_t, G_N_ELEMENTS(rate_map));
+	for (size_t i = 0; i < G_N_ELEMENTS(rate_map); i++) {
+		rates[i] = rate_map[i].rate;
+	}
+
+	*ret_len = G_N_ELEMENTS(rate_map);
+	return rates;
 }
 
 SR_PRIV int mso_configure_trigger(const struct sr_dev_inst *sdi)
@@ -402,7 +413,7 @@ SR_PRIV int mso_check_trigger(struct sr_serial_dev_inst *serial, uint8_t *info)
 		return ret;
 
 	uint8_t buf = 0;
-	if (serial_read_blocking(serial, &buf, 1, 0) != 1)	/* FIXME: Need timeout */
+	if (serial_read_blocking(serial, &buf, 1, 1000) != 1)	/* FIXME: Need timeout */
 		ret = SR_ERR;
 	if (!info)
 		*info = buf;
@@ -415,6 +426,10 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 {
 	struct sr_datafeed_packet packet;
 	struct sr_datafeed_logic logic;
+	struct sr_datafeed_analog analog;
+	struct sr_analog_encoding encoding;
+	struct sr_analog_meaning meaning;
+	struct sr_analog_spec spec;
 	struct sr_dev_inst *sdi = cb_data;
 	struct dev_context *devc = sdi->priv;
 	int i;
@@ -422,7 +437,7 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 	(void)revents;
 
 	uint8_t in[1024];
-	size_t s = serial_read_blocking(devc->serial, in, sizeof(in), 0); // TODO: timeout
+	size_t s = serial_read_blocking(devc->serial, in, sizeof(in), 1000); // TODO: timeout
 
 	if (s <= 0)
 		return FALSE;
@@ -450,7 +465,7 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 
 	/* do the conversion */
 	uint8_t logic_out[1024];
-	double analog_out[1024];
+	float analog_out[1024];
 	for (i = 0; i < 1024; i++) {
 		/* FIXME: Need to do conversion to mV */
 		analog_out[i] = (devc->buffer[i * 3] & 0x3f) |
@@ -466,6 +481,20 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 	logic.unitsize = 1;
 	logic.data = logic_out;
 	sr_session_send(sdi, &packet);
+
+	packet.type = SR_DF_ANALOG;
+	packet.payload = &analog;
+	sr_analog_init(&analog, &encoding, &meaning, &spec, 3); // TODO digits
+	analog.num_samples = 1024;
+	analog.data = analog_out;
+	// first channel is DSO
+	struct sr_channel *ch = (struct sr_channel *)sdi->channels->data;
+	analog.meaning->channels = g_slist_append(NULL, ch);
+	analog.meaning->mq = SR_MQ_VOLTAGE;
+	analog.meaning->unit = SR_UNIT_VOLT;
+	analog.meaning->mqflags = 0;
+	sr_session_send(sdi, &packet);
+	g_slist_free(analog.meaning->channels);
 
 	devc->num_samples += 1024;
 
