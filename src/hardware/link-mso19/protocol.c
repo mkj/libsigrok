@@ -59,6 +59,8 @@ struct rate_map {
 
 static const struct rate_map rate_map[] = {
 	// values updated from mso19fcgi CalcRateMSBLSB()
+	// TODO: 1ghz and 200mhz seem to have different calibration values in mso19fcgi?
+	//       OffsetCenterVal200 etc but the usb serial isn't that big...
 	{ SR_GHZ(1),   0x0000, 0 }, // RIS mode
 	{ SR_MHZ(200), 0x0205, 0 },
 	{ SR_MHZ(100), 0x0103, 0 },
@@ -135,7 +137,7 @@ ret:
 	return ret;
 }
 
-SR_PRIV const uint64_t *mso_get_sample_rates(size_t *ret_len)
+SR_PRIV uint64_t *mso_get_sample_rates(size_t *ret_len)
 {
 	uint64_t *rates = g_new(uint64_t, G_N_ELEMENTS(rate_map));
 	for (size_t i = 0; i < G_N_ELEMENTS(rate_map); i++) {
@@ -301,20 +303,23 @@ SR_PRIV int mso_parse_serial(const char *iSerial, const char *iProduct,
 		return SR_ERR;
 	devc->hwmodel = u4;
 	devc->hwrev = u5;
-	devc->vbit = u1 / 10000;
-	if (devc->vbit == 0)
-		devc->vbit = 4.19195;
+	devc->vbit = (double)u1 / 10000;
 	devc->dac_offset = u2;
-	if (devc->dac_offset == 0)
-		devc->dac_offset = 0x1ff;
-	devc->offset_range = u3;
-	if (devc->offset_range == 0)
-		devc->offset_range = 0x17d;
+	devc->offset_vbit = 3000.0 / u3;
+
+	// if (devc->vbit == 0)
+	// 	devc->vbit = 4.19195; // TODO remove
+	// if (devc->dac_offset == 0)
+	// 	devc->dac_offset = 0x1ff; // TODO remove
+	// if (devc->offset_range == 0)
+	// 	devc->offset_range = 0x17d; // TODO remove
 
 	/*
 	 * FIXME: There is more code on the original software to handle
 	 * bigger iSerial strings, but as I can't test on my device
-	 * I will not implement it yet
+	 * I will not implement it yet.
+
+	 * This corresponds to vbit200 etc settings in mso19fcgi Parse19Sn().
 	 */
 
 	return SR_OK;
@@ -422,6 +427,17 @@ SR_PRIV int mso_check_trigger(struct sr_serial_dev_inst *serial, uint8_t *info)
 	return ret;
 }
 
+static void mso_calc_volts_from_raw(struct dev_context *devc,
+	const uint16_t *sample_in, float *volt_out, size_t nsamps)
+{
+	const float vbit = devc->vbit;
+	const float attn = devc->dso_probe_attn;
+	// TODO: use offset_vbit ?
+	for (size_t i = 0; i < nsamps; i++) {
+		volt_out[i] = (512.f - sample_in[i]) * vbit * attn;
+	}
+}
+
 SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 {
 	struct sr_datafeed_packet packet;
@@ -465,15 +481,16 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 
 	/* do the conversion */
 	uint8_t logic_out[1024];
-	float analog_out[1024];
+	uint16_t analog_out[1024];
 	for (i = 0; i < 1024; i++) {
-		/* FIXME: Need to do conversion to mV */
 		analog_out[i] = (devc->buffer[i * 3] & 0x3f) |
 		    ((devc->buffer[i * 3 + 1] & 0xf) << 6);
-		(void)analog_out;
 		logic_out[i] = ((devc->buffer[i * 3 + 1] & 0x30) >> 4) |
 		    ((devc->buffer[i * 3 + 2] & 0x3f) << 2);
 	}
+
+	float analog_volts[1024];
+	mso_calc_volts_from_raw(devc, analog_out, analog_volts, 1024);
 
 	packet.type = SR_DF_LOGIC;
 	packet.payload = &logic;
@@ -486,7 +503,7 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 	packet.payload = &analog;
 	sr_analog_init(&analog, &encoding, &meaning, &spec, 3); // TODO digits
 	analog.num_samples = 1024;
-	analog.data = analog_out;
+	analog.data = analog_volts;
 	// first channel is DSO
 	struct sr_channel *ch = (struct sr_channel *)sdi->channels->data;
 	analog.meaning->channels = g_slist_append(NULL, ch);
@@ -518,7 +535,7 @@ SR_PRIV int mso_configure_channels(const struct sr_dev_inst *sdi)
 	devc->la_trigger_mask = 0xFF;	//the mask for the LA_TRIGGER (bits set to 0 matter, those set to 1 are ignored).
 	devc->la_trigger = 0x00;	//The value of the LA byte that generates a trigger event (in that mode).
 	devc->dso_trigger_voltage = 3;
-	devc->dso_probe_attn = 1;
+	devc->dso_probe_attn = 1; // TODO use SR_CONF_PROBE_FACTOR
 	devc->trigger_outsrc = 0;
 	devc->trigger_chan = 3;	//LA combination trigger
 	devc->use_trigger = FALSE;

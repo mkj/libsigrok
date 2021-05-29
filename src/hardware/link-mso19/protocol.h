@@ -93,7 +93,8 @@ struct dev_context {
 	/* calibration */
 	double vbit;
 	uint16_t dac_offset;
-	uint16_t offset_range;
+	double offset_vbit;
+
 	uint64_t limit_samples;
 	uint64_t num_samples;
 
@@ -139,6 +140,6 @@ SR_PRIV int mso_toggle_led(struct sr_dev_inst *sdi, int state);
 
 SR_PRIV int mso_configure_channels(const struct sr_dev_inst *sdi);
 SR_PRIV void stop_acquisition(const struct sr_dev_inst *sdi);
-SR_PRIV const uint64_t *mso_get_sample_rates(size_t *ret_len);
+SR_PRIV uint64_t *mso_get_sample_rates(size_t *ret_len);
 
 #endif
