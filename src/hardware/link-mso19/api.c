@@ -36,6 +36,7 @@ static const uint32_t devopts[] = {
 	SR_CONF_HORIZ_TRIGGERPOS | SR_CONF_SET,
 	SR_CONF_CAPTURE_RATIO | SR_CONF_SET,
 	SR_CONF_RLE | SR_CONF_SET,
+	SR_CONF_COUPLING | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 	SR_CONF_CONTINUOUS,
 };
 
@@ -52,6 +53,9 @@ static const char *channel_names[] = {
 static const char *trigger_slopes[2] = {
 	"r", "f",
 };
+
+// cast to a bool dc_coupling, so keep this ordered.
+static const char *acdc_coupling[] = { "AC", "DC" };
 
 static GSList *scan(struct sr_dev_driver *di, GSList *options)
 {
@@ -221,6 +225,9 @@ static int config_get(uint32_t key, GVariant **data,
 	case SR_CONF_SAMPLERATE:
 		*data = g_variant_new_uint64(devc->cur_rate);
 		break;
+	case SR_CONF_COUPLING:
+		*data = g_variant_new_string(acdc_coupling[(int)devc->dc_coupling]);
+		break;
 	default:
 		return SR_ERR_NA;
 	}
@@ -273,6 +280,11 @@ static int config_set(uint32_t key, GVariant *data,
 		trigger_pos = (int)pos;
 		devc->trigger_holdoff[0] = trigger_pos & 0xff;
 		break;
+	case SR_CONF_COUPLING:
+		if ((idx = std_str_idx(data, ARRAY_AND_SIZE(acdc_coupling))) < 0)
+			return SR_ERR_ARG;
+		devc->dc_coupling = (gboolean)idx;
+		break;
 	case SR_CONF_RLE:
 		break;
 	default:
@@ -302,6 +314,9 @@ static int config_list(uint32_t key, GVariant **data,
 	// case SR_CONF_TRIGGER_TYPE:
 	// 	*data = g_variant_new_string(TRIGGER_TYPE);
 	// 	break;
+	case SR_CONF_COUPLING:
+		*data = g_variant_new_strv(acdc_coupling, G_N_ELEMENTS(acdc_coupling));
+		break;
 	default:
 		printf("return SR_ERR_NA\n");
 		return SR_ERR_NA;

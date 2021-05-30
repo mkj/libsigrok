@@ -578,7 +578,6 @@ SR_PRIV int mso_configure_channels(const struct sr_dev_inst *sdi)
 	devc->trigger_outsrc = 0;
 	devc->trigger_chan = 3;	//LA combination trigger
 	devc->use_trigger = FALSE;
-	devc->dc_coupling = FALSE;
 	devc->la_threshold = DEFAULT_LA_THRESHOLD;
 
 	for (l = sdi->channels; l; l = l->next) {
