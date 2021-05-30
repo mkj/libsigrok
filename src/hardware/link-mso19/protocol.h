@@ -98,12 +98,12 @@ struct dev_context {
 	uint64_t limit_samples;
 	uint64_t num_samples;
 
-	/* register cache */
-	uint8_t ctlbase1;
-	uint8_t ctlbase2;
+	uint8_t ctlbase2; // remove this, it is just slowmode?
 
 	uint8_t la_threshold;
 	uint64_t cur_rate;
+	uint16_t cur_rate_regval;
+	uint8_t slowmode;
 	uint8_t dso_probe_attn;
 	int8_t use_trigger;
 	uint8_t trigger_chan;
@@ -127,22 +127,18 @@ SR_PRIV int mso_parse_serial(const char *iSerial, const char *iProduct,
 SR_PRIV int mso_check_trigger(struct sr_serial_dev_inst *serial,
 			      uint8_t * info);
 SR_PRIV int mso_reset_adc(struct sr_dev_inst *sdi);
-SR_PRIV int mso_clkrate_out(struct sr_serial_dev_inst *serial, uint16_t val);
-SR_PRIV int mso_configure_rate(const struct sr_dev_inst *sdi, uint32_t rate);
+SR_PRIV int mso_set_rate(const struct sr_dev_inst *sdi, uint32_t rate);
 SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data);
-SR_PRIV int mso_configure_trigger(const struct sr_dev_inst *sdi);
-SR_PRIV int mso_configure_dac_offset(const struct sr_dev_inst *sdi);
-SR_PRIV int mso_configure_threshold_level(const struct sr_dev_inst *sdi);
+SR_PRIV int mso_configure_hw(const struct sr_dev_inst *sdi);
 SR_PRIV int mso_read_buffer(struct sr_dev_inst *sdi);
 SR_PRIV int mso_arm(const struct sr_dev_inst *sdi);
 SR_PRIV int mso_force_capture(struct sr_dev_inst *sdi);
-SR_PRIV int mso_dac_out(const struct sr_dev_inst *sdi, uint16_t val);
 SR_PRIV uint16_t mso_calc_raw_from_mv(struct dev_context *devc, float mv);
 SR_PRIV int mso_reset_fsm(struct sr_dev_inst *sdi);
 SR_PRIV int mso_toggle_led(struct sr_dev_inst *sdi, int state);
 
-SR_PRIV int mso_configure_channels(const struct sr_dev_inst *sdi);
 SR_PRIV void mso_stop_acquisition(struct sr_dev_inst *sdi);
 SR_PRIV uint64_t *mso_get_sample_rates(size_t *ret_len);
+
 
 #endif

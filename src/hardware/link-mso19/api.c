@@ -152,7 +152,6 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 
 		char hwrev[32];
 		sprintf(hwrev, "r%d", devc->hwrev);
-		devc->ctlbase1 = 0;
 		devc->protocol_trigger.spimode = 0;
 		for (i = 0; i < 4; i++) {
 			devc->protocol_trigger.word[i] = 0;
@@ -167,6 +166,10 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 		sdi->model = g_strdup(product);
 		sdi->version = g_strdup(hwrev);
 		sdi->priv = devc;
+
+		if (mso_set_rate(sdi, 1000000) != SR_OK) {
+			sr_err("Error setting initial rate");
+		}
 
 		for (i = 0; i < ARRAY_SIZE(channel_names); i++) {
 			chtype = (i == 0) ? SR_CHANNEL_ANALOG : SR_CHANNEL_LOGIC;
@@ -193,6 +196,9 @@ static int dev_open(struct sr_dev_inst *sdi)
 	sr_dbg("Trigger state: 0x%x.", devc->trigger_state);
 
 	ret = mso_reset_adc(sdi);
+	if (ret != SR_OK)
+		return ret;
+	ret = mso_reset_fsm(sdi);
 	if (ret != SR_OK)
 		return ret;
 
@@ -255,7 +261,7 @@ static int config_set(uint32_t key, GVariant *data,
 
 	switch (key) {
 	case SR_CONF_SAMPLERATE:
-		return mso_configure_rate(sdi, g_variant_get_uint64(data));
+		return mso_set_rate(sdi, g_variant_get_uint64(data));
 	case SR_CONF_LIMIT_SAMPLES:
 		num_samples = g_variant_get_uint64(data);
 		// if (num_samples > 1024) {
@@ -335,38 +341,12 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi)
 
 	devc = sdi->priv;
 
-	if (mso_configure_channels(sdi) != SR_OK) {
-		sr_err("Failed to configure channels.");
-		return SR_ERR;
-	}
-
 	/* FIXME: No need to do full reconfigure every time */
-//      ret = mso_reset_fsm(sdi);
-//      if (ret != SR_OK)
-//              return ret;
-
-	/* FIXME: ACDC Mode */
-	devc->ctlbase1 &= 0x7f;
-//      devc->ctlbase1 |= devc->acdcmode;
-
-	ret = mso_configure_rate(sdi, devc->cur_rate);
+	ret = mso_configure_hw(sdi);
 	if (ret != SR_OK)
 		return ret;
-
-	/* set dac offset */
-	ret = mso_configure_dac_offset(sdi);
-	if (ret != SR_OK)
-		return ret;
-
-	ret = mso_configure_threshold_level(sdi);
-	if (ret != SR_OK)
-		return ret;
-
-	ret = mso_configure_trigger(sdi);
-	if (ret != SR_OK)
-		return ret;
-
 	/* END of config hardware part */
+
 	ret = mso_arm(sdi);
 	if (ret != SR_OK)
 		return ret;
