@@ -44,6 +44,7 @@
 #define BIT_CTL1_RESETFSM	(1 << 0)
 #define BIT_CTL1_ARM		(1 << 1)
 #define BIT_CTL1_ADC_UNKNOWN4	(1 << 4)	/* adc enable? */
+#define BIT_CTL1_CONFIGDAC	(1 << 5) // configure voltage offset and trigger voltage
 #define BIT_CTL1_RESETADC	(1 << 6)
 #define BIT_CTL1_LED		(1 << 7)
 
@@ -84,11 +85,18 @@ static const struct rate_map rate_map[] = {
 	// { SR_HZ(10),   0x9f0f, 0x20 }, // disabled in mso19fcgi ??
 };
 
-/* FIXME: Determine corresponding voltages */
-static const uint16_t la_threshold_map[] = {
-	0x8600, 0x8770, 0x88ff, 0x8c70, 0x8eff, 0x8fff,
+static const struct {
+	float voltage;
+	uint16_t val;
+} la_threshold_map[] = {
+	{1.2, 0x8600},
+	{1.5, 0x8770},
+	{1.8, 0x88ff},
+	{2.5, 0x8c70},
+	{3.0, 0x8eff},
+	{3.3, 0x8eff},
 };
-
+static const int DEFAULT_LA_THRESHOLD = 5; // 3.3v
 
 /* serial protocol */
 #define mso_trans(a, v) \
@@ -97,6 +105,8 @@ static const uint16_t la_threshold_map[] = {
 
 static const char mso_head[] = { 0x40, 0x4c, 0x44, 0x53, 0x7e };
 static const char mso_foot[] = { 0x7e };
+
+static uint16_t mso_calc_offset_raw_from_mv(struct dev_context *devc, float mv);
 
 static int mso_send_control_message(struct sr_serial_dev_inst *serial,
 				     uint16_t payload[], int n)
@@ -133,7 +143,7 @@ static int mso_send_control_message(struct sr_serial_dev_inst *serial,
 	ret = SR_OK;
 free:
 	g_free(buf);
-ret:
+// ret:
 	return ret;
 }
 
@@ -151,7 +161,8 @@ SR_PRIV uint64_t *mso_get_sample_rates(size_t *ret_len)
 SR_PRIV int mso_configure_trigger(const struct sr_dev_inst *sdi)
 {
 	struct dev_context *devc = sdi->priv;
-	uint16_t threshold_value = mso_calc_raw_from_mv(devc);
+	uint16_t threshold_value = mso_calc_raw_from_mv(devc,
+		devc->dso_trigger_voltage + devc->v_offset);
 
 	threshold_value = 0x153C;
 	uint8_t trigger_config = 0;
@@ -226,7 +237,15 @@ SR_PRIV int mso_configure_threshold_level(const struct sr_dev_inst *sdi)
 {
 	struct dev_context *devc = sdi->priv;
 
-	return mso_dac_out(sdi, la_threshold_map[devc->la_threshold]);
+	return mso_dac_out(sdi, la_threshold_map[devc->la_threshold].val);
+}
+
+SR_PRIV int mso_configure_dac_offset(const struct sr_dev_inst *sdi)
+{
+	struct dev_context *devc = sdi->priv;
+
+	uint16_t val = mso_calc_offset_raw_from_mv(devc, devc->v_offset * 1000);
+	return mso_dac_out(sdi, val);
 }
 
 SR_PRIV int mso_read_buffer(struct sr_dev_inst *sdi)
@@ -238,13 +257,30 @@ SR_PRIV int mso_read_buffer(struct sr_dev_inst *sdi)
 	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
 }
 
+static void mso_calc_mv_from_raw(struct dev_context *devc,
+	const uint16_t *sample_in, float *mv_out, size_t nsamps)
+{
+	const float vbit = devc->vbit;
+	const float offset_vbit = devc->offset_vbit;
+	const float attn = devc->dso_probe_attn;
+	for (size_t i = 0; i < nsamps; i++) {
+		mv_out[i] = (512.f - sample_in[i]) * vbit * attn * 0.001f;
+	}
+}
+
 SR_PRIV int mso_arm(const struct sr_dev_inst *sdi)
 {
 	struct dev_context *devc = sdi->priv;
+	uint8_t ctlbase = devc->ctlbase1;
+
+	if (devc->dc_coupling) {
+		ctlbase |= 0x80; // TODO untested.
+	}
+
 	uint16_t ops[] = {
-		mso_trans(REG_CTL1, devc->ctlbase1 | BIT_CTL1_RESETFSM),
-		mso_trans(REG_CTL1, devc->ctlbase1 | BIT_CTL1_ARM),
-		mso_trans(REG_CTL1, devc->ctlbase1),
+		mso_trans(REG_CTL1, ctlbase | BIT_CTL1_RESETFSM),
+		mso_trans(REG_CTL1, ctlbase | BIT_CTL1_ARM),
+		mso_trans(REG_CTL1, ctlbase),
 	};
 
 	sr_dbg("Requesting trigger arm.");
@@ -269,18 +305,24 @@ SR_PRIV int mso_dac_out(const struct sr_dev_inst *sdi, uint16_t val)
 	uint16_t ops[] = {
 		mso_trans(REG_DAC1, (val >> 8) & 0xff),
 		mso_trans(REG_DAC2, val & 0xff),
-		mso_trans(REG_CTL1, devc->ctlbase1 | BIT_CTL1_RESETADC),
+		mso_trans(REG_CTL1, devc->ctlbase1 | BIT_CTL1_CONFIGDAC),
 	};
 
 	sr_dbg("Setting dac word to 0x%x.", val);
 	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
 }
 
-SR_PRIV uint16_t mso_calc_raw_from_mv(struct dev_context *devc)
+// For triggers, offset should be already applied to the mv input
+SR_PRIV uint16_t mso_calc_raw_from_mv(struct dev_context *devc, float mv)
 {
-	return (uint16_t) (0x200 -
-			   ((devc->dso_trigger_voltage / devc->dso_probe_attn) /
-			    devc->vbit));
+	return (uint16_t) (512 - (uint16_t)((mv / devc->dso_probe_attn) / devc->vbit));
+}
+
+// For dso offset config.
+static uint16_t mso_calc_offset_raw_from_mv(struct dev_context *devc, float mv)
+{
+	int val = devc->dac_offset - ((mv / devc->dso_probe_attn) / devc->offset_vbit);
+	return CLAMP(val, 0, 0xfff);
 }
 
 SR_PRIV int mso_parse_serial(const char *iSerial, const char *iProduct,
@@ -306,6 +348,9 @@ SR_PRIV int mso_parse_serial(const char *iSerial, const char *iProduct,
 	devc->vbit = (double)u1 / 10000;
 	devc->dac_offset = u2;
 	devc->offset_vbit = 3000.0 / u3;
+
+	printf("vbit %f, dac_offset %hu, offset_vbit %f\n",
+		devc->vbit, devc->dac_offset, devc->offset_vbit);
 
 	// if (devc->vbit == 0)
 	// 	devc->vbit = 4.19195; // TODO remove
@@ -364,12 +409,15 @@ SR_PRIV int mso_toggle_led(struct sr_dev_inst *sdi, int state)
 	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
 }
 
-SR_PRIV void stop_acquisition(const struct sr_dev_inst *sdi)
+SR_PRIV void mso_stop_acquisition(struct sr_dev_inst *sdi)
 {
 	struct dev_context *devc;
 
+
 	devc = sdi->priv;
 	serial_source_remove(sdi->session, devc->serial);
+
+	mso_reset_fsm(sdi);
 
 	std_session_send_df_end(sdi);
 }
@@ -391,12 +439,15 @@ SR_PRIV int mso_configure_rate(const struct sr_dev_inst *sdi, uint32_t rate)
 	unsigned int i;
 	int ret = SR_ERR;
 
-	for (i = 0; i < ARRAY_SIZE(rate_map); i++) {
+	for (i = 0; i < G_N_ELEMENTS(rate_map); i++) {
 		if (rate_map[i].rate == rate) {
 			devc->ctlbase2 = rate_map[i].slowmode;
 			ret = mso_clkrate_out(devc->serial, rate_map[i].val);
-			if (ret == SR_OK)
+			if (ret == SR_OK) {
 				devc->cur_rate = rate;
+			} else {
+				sr_err("Setting rate failed");
+			}
 			return ret;
 		}
 	}
@@ -425,17 +476,6 @@ SR_PRIV int mso_check_trigger(struct sr_serial_dev_inst *serial, uint8_t *info)
 
 	sr_dbg("Trigger state is: 0x%x.", *info);
 	return ret;
-}
-
-static void mso_calc_volts_from_raw(struct dev_context *devc,
-	const uint16_t *sample_in, float *volt_out, size_t nsamps)
-{
-	const float vbit = devc->vbit;
-	const float attn = devc->dso_probe_attn;
-	// TODO: use offset_vbit ?
-	for (size_t i = 0; i < nsamps; i++) {
-		volt_out[i] = (512.f - sample_in[i]) * vbit * attn;
-	}
 }
 
 SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
@@ -490,7 +530,7 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 	}
 
 	float analog_volts[1024];
-	mso_calc_volts_from_raw(devc, analog_out, analog_volts, 1024);
+	mso_calc_mv_from_raw(devc, analog_out, analog_volts, 1024);
 
 	packet.type = SR_DF_LOGIC;
 	packet.payload = &logic;
@@ -528,7 +568,6 @@ SR_PRIV int mso_configure_channels(const struct sr_dev_inst *sdi)
 	struct dev_context *devc;
 	struct sr_channel *ch;
 	GSList *l;
-	char *tc;
 
 	devc = sdi->priv;
 
@@ -539,6 +578,8 @@ SR_PRIV int mso_configure_channels(const struct sr_dev_inst *sdi)
 	devc->trigger_outsrc = 0;
 	devc->trigger_chan = 3;	//LA combination trigger
 	devc->use_trigger = FALSE;
+	devc->dc_coupling = FALSE;
+	devc->la_threshold = DEFAULT_LA_THRESHOLD;
 
 	for (l = sdi->channels; l; l = l->next) {
 		ch = (struct sr_channel *)l->data;

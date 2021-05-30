@@ -36,6 +36,7 @@ static const uint32_t devopts[] = {
 	SR_CONF_HORIZ_TRIGGERPOS | SR_CONF_SET,
 	SR_CONF_CAPTURE_RATIO | SR_CONF_SET,
 	SR_CONF_RLE | SR_CONF_SET,
+	SR_CONF_CONTINUOUS,
 };
 
 /*
@@ -247,7 +248,6 @@ static int config_set(uint32_t key, GVariant *data,
 
 	switch (key) {
 	case SR_CONF_SAMPLERATE:
-		// FIXME
 		return mso_configure_rate(sdi, g_variant_get_uint64(data));
 	case SR_CONF_LIMIT_SAMPLES:
 		num_samples = g_variant_get_uint64(data);
@@ -339,7 +339,7 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi)
 		return ret;
 
 	/* set dac offset */
-	ret = mso_dac_out(sdi, devc->dac_offset);
+	ret = mso_configure_dac_offset(sdi);
 	if (ret != SR_OK)
 		return ret;
 
@@ -378,7 +378,7 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi)
 
 static int dev_acquisition_stop(struct sr_dev_inst *sdi)
 {
-	stop_acquisition(sdi);
+	mso_stop_acquisition(sdi);
 
 	return SR_OK;
 }

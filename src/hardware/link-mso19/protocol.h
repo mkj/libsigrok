@@ -116,6 +116,8 @@ struct dev_context {
 	double dso_trigger_voltage;
 	uint16_t dso_trigger_width;
 	struct mso_prototrig protocol_trigger;
+	gboolean dc_coupling; // TODO SR_CONF_COUPLING
+	float v_offset; // TODO
 	uint16_t buffer_n;
 	char buffer[4096];
 };
@@ -129,17 +131,18 @@ SR_PRIV int mso_clkrate_out(struct sr_serial_dev_inst *serial, uint16_t val);
 SR_PRIV int mso_configure_rate(const struct sr_dev_inst *sdi, uint32_t rate);
 SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data);
 SR_PRIV int mso_configure_trigger(const struct sr_dev_inst *sdi);
+SR_PRIV int mso_configure_dac_offset(const struct sr_dev_inst *sdi);
 SR_PRIV int mso_configure_threshold_level(const struct sr_dev_inst *sdi);
 SR_PRIV int mso_read_buffer(struct sr_dev_inst *sdi);
 SR_PRIV int mso_arm(const struct sr_dev_inst *sdi);
 SR_PRIV int mso_force_capture(struct sr_dev_inst *sdi);
 SR_PRIV int mso_dac_out(const struct sr_dev_inst *sdi, uint16_t val);
-SR_PRIV uint16_t mso_calc_raw_from_mv(struct dev_context *devc);
+SR_PRIV uint16_t mso_calc_raw_from_mv(struct dev_context *devc, float mv);
 SR_PRIV int mso_reset_fsm(struct sr_dev_inst *sdi);
 SR_PRIV int mso_toggle_led(struct sr_dev_inst *sdi, int state);
 
 SR_PRIV int mso_configure_channels(const struct sr_dev_inst *sdi);
-SR_PRIV void stop_acquisition(const struct sr_dev_inst *sdi);
+SR_PRIV void mso_stop_acquisition(struct sr_dev_inst *sdi);
 SR_PRIV uint64_t *mso_get_sample_rates(size_t *ret_len);
 
 #endif
