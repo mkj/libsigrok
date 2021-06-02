@@ -65,31 +65,63 @@ struct rate_map {
 	uint8_t slowmode;
 };
 
+/* rate_map table matches this:
+# python
+for rate, val, slowmode in rate_map:
+    clkdiv = (val & 0xff) | ((val >> 2) & 0xff00)
+    if rate >= 10000:
+        basef = SR_MHZ(100)
+        extra = 2
+    else:
+        basef = SR_MHZ(1)
+        extra = 1
+    print("%15d Hz 0x%04x clkdiv 0x%04x %-3d %f"
+        % (rate, val, clkdiv, clkdiv, basef/(clkdiv+extra)))
+
+200000000 Hz 0x0205 clkdiv 0x0005 5   14285714.285714
+100000000 Hz 0x0105 clkdiv 0x0005 5   14285714.285714
+ 50000000 Hz 0x0005 clkdiv 0x0005 5   14285714.285714
+ 20000000 Hz 0x0303 clkdiv 0x0003 3   20000000.000000
+ 10000000 Hz 0x0308 clkdiv 0x0008 8   10000000.000000
+  5000000 Hz 0x0312 clkdiv 0x0012 18  5000000.000000
+  2000000 Hz 0x0330 clkdiv 0x0030 48  2000000.000000
+  1000000 Hz 0x0362 clkdiv 0x0062 98  1000000.000000
+   500000 Hz 0x03c6 clkdiv 0x00c6 198 500000.000000
+   200000 Hz 0x07f2 clkdiv 0x01f2 498 200000.000000
+   100000 Hz 0x0fe6 clkdiv 0x03e6 998 100000.000000
+    50000 Hz 0x1fce clkdiv 0x07ce 1998 50000.000000
+    20000 Hz 0x4f86 clkdiv 0x1386 4998 20000.000000
+    10000 Hz 0x9f0e clkdiv 0x270e 9998 10000.000000
+     5000 Hz 0x03c7 clkdiv 0x00c7 199 5000.000000
+     2000 Hz 0x07f3 clkdiv 0x01f3 499 2000.000000
+     1000 Hz 0x0fe7 clkdiv 0x03e7 999 1000.000000
+      500 Hz 0x1fcf clkdiv 0x07cf 1999 500.000000
+      200 Hz 0x4f87 clkdiv 0x1387 4999 200.000000
+      100 Hz 0x9f0f clkdiv 0x270f 9999 100.000000
+*/
+
+
 static const struct rate_map rate_map[] = {
-	// values updated from mso19fcgi CalcRateMSBLSB()
-	// TODO: 1ghz and 200mhz seem to have different calibration values in mso19fcgi?
-	//       OffsetCenterVal200 etc but the usb serial isn't that big...
-	{ SR_GHZ(1),   0x0000, 0 }, // RIS mode
 	{ SR_MHZ(200), 0x0205, 0 },
-	{ SR_MHZ(100), 0x0103, 0 },
-	{ SR_MHZ(50),  0x0302, 0 },
-	{ SR_MHZ(20),  0x0308, 0 },
-	{ SR_MHZ(10),  0x0312, 0 },
-	{ SR_MHZ(5),   0x0326, 0 },
-	{ SR_MHZ(2),   0x0362, 0 },
-	{ SR_MHZ(1),   0x03c6, 0 },
-	{ SR_KHZ(500), 0x078e, 0 },
-	{ SR_KHZ(200), 0x0fe6, 0 },
-	{ SR_KHZ(100), 0x1fce, 0 },
-	{ SR_KHZ(50),  0x3f9e, 0 },
-	{ SR_KHZ(20),  0x9f0e, 0 },
-	{ SR_KHZ(10),  0x03c6, 0x20 },
-	{ SR_KHZ(5),   0x078e, 0x20 },
-	{ SR_KHZ(2),   0x0fe6, 0x20 },
-	{ SR_KHZ(1),   0x1fce, 0x20 },
-	{ SR_HZ(500),  0x3f9e, 0x20 },
-	{ SR_HZ(20),   0x9f0e, 0x20 },
-	// { SR_HZ(10),   0x9f0f, 0x20 }, // disabled in mso19fcgi ??
+	{ SR_MHZ(100), 0x0105, 0 },
+	{ SR_MHZ(50),  0x0005, 0 },
+	{ SR_MHZ(20),  0x0303, 0 },
+	{ SR_MHZ(10),  0x0308, 0 },
+	{ SR_MHZ(5),   0x0312, 0 },
+	{ SR_MHZ(2),   0x0330, 0 },
+	{ SR_MHZ(1),   0x0362, 0 },
+	{ SR_KHZ(500), 0x03c6, 0 },
+	{ SR_KHZ(200), 0x07f2, 0 },
+	{ SR_KHZ(100), 0x0fe6, 0 },
+	{ SR_KHZ(50),  0x1fce, 0 },
+	{ SR_KHZ(20),  0x4f86, 0 },
+	{ SR_KHZ(10),  0x9f0e, 0 },
+	{ SR_KHZ(5),   0x03c7, 0x20 },
+	{ SR_KHZ(2),   0x07f3, 0x20 },
+	{ SR_KHZ(1),   0x0fe7, 0x20 },
+	{ SR_HZ(500),  0x1fcf, 0x20 },
+	{ SR_HZ(200),  0x4f87, 0x20 },
+	{ SR_HZ(100),  0x9f0f, 0x20 },
 };
 
 static const struct {
