@@ -153,18 +153,22 @@ static int mso_configure_dac_offset(const struct sr_dev_inst *sdi);
 static int mso_configure_threshold_level(const struct sr_dev_inst *sdi);
 static int mso_configure_channels(const struct sr_dev_inst *sdi);
 
-static int mso_send_control_message(struct sr_serial_dev_inst *serial,
+static struct sr_serial_dev_inst *mso_serial(const struct sr_dev_inst *sdi)
+{
+	return (struct sr_serial_dev_inst*)sdi->conn;
+}
+
+static int mso_send_control_message(const struct sr_dev_inst *sdi,
 				     uint16_t payload[], int n)
 {
-	int i, w, ret, s = n * 2 + sizeof(mso_head) + sizeof(mso_foot);
-	char *p, *buf;
+	int i, ret;
+	size_t w, s = n * 2 + sizeof(mso_head) + sizeof(mso_foot);
+	char *p, buf[100];
 
-	ret = SR_ERR;
-
-	// if (serial->fd < 0)
-	// 	goto ret;
-
-	buf = g_malloc(s);
+	if (s > sizeof(buf)) {
+		sr_err("BUG: mso_send_control_message buffer is small");
+		return SR_ERR;
+	}
 
 	p = buf;
 	memcpy(p, mso_head, sizeof(mso_head));
@@ -178,18 +182,12 @@ static int mso_send_control_message(struct sr_serial_dev_inst *serial,
 
 	w = 0;
 	while (w < s) {
-		ret = serial_write_blocking(serial, buf + w, s - w, 1000); // TODO: timeout?
-		if (ret < 0) {
-			ret = SR_ERR;
-			goto free;
-		}
+		ret = serial_write_blocking(mso_serial(sdi), buf + w, s - w, 1000); // TODO: timeout?
+		if (ret < 0)
+			return ret;
 		w += ret;
 	}
-	ret = SR_OK;
-free:
-	g_free(buf);
-// ret:
-	return ret;
+	return SR_OK;
 }
 
 SR_PRIV uint64_t *mso_get_sample_rates(size_t *ret_len)
@@ -275,7 +273,7 @@ static int mso_configure_trigger(const struct sr_dev_inst *sdi)
 	/* Select the default config bank */
 	ops[17] = mso_trans(REG_CTL2, devc->ctlbase2);
 
-	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
+	return mso_send_control_message(sdi, ARRAY_AND_SIZE(ops));
 }
 
 static int mso_configure_threshold_level(const struct sr_dev_inst *sdi)
@@ -296,10 +294,9 @@ static int mso_configure_dac_offset(const struct sr_dev_inst *sdi)
 SR_PRIV int mso_read_buffer(struct sr_dev_inst *sdi)
 {
 	uint16_t ops[] = { mso_trans(REG_BUFFER, 0) };
-	struct dev_context *devc = sdi->priv;
 
 	sr_dbg("Requesting buffer dump.");
-	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
+	return mso_send_control_message(sdi, ARRAY_AND_SIZE(ops));
 }
 
 static void mso_calc_mv_from_raw(struct dev_context *devc,
@@ -358,24 +355,22 @@ SR_PRIV int mso_arm(const struct sr_dev_inst *sdi)
 	};
 
 	sr_dbg("Requesting trigger arm.");
-	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
+	return mso_send_control_message(sdi, ARRAY_AND_SIZE(ops));
 }
 
 SR_PRIV int mso_force_capture(struct sr_dev_inst *sdi)
 {
-	struct dev_context *devc = sdi->priv;
 	uint16_t ops[] = {
 		mso_trans(REG_CTL1, BIT_CTL1_BASE | BIT_CTL1_FORCE),
 		mso_trans(REG_CTL1, BIT_CTL1_BASE),
 	};
 
 	sr_dbg("Requesting forced capture.");
-	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
+	return mso_send_control_message(sdi, ARRAY_AND_SIZE(ops));
 }
 
 static int mso_dac_out(const struct sr_dev_inst *sdi, uint16_t val)
 {
-	struct dev_context *devc = sdi->priv;
 	uint16_t ops[] = {
 		mso_trans(REG_DAC1, (val >> 8) & 0xff),
 		mso_trans(REG_DAC2, val & 0xff),
@@ -383,7 +378,7 @@ static int mso_dac_out(const struct sr_dev_inst *sdi, uint16_t val)
 	};
 
 	sr_dbg("Setting dac word to 0x%x.", val);
-	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
+	return mso_send_control_message(sdi, ARRAY_AND_SIZE(ops));
 }
 
 // For triggers, offset should be already applied to the mv input
@@ -446,25 +441,23 @@ SR_PRIV int mso_parse_serial(const char *iSerial, const char *iProduct,
 
 SR_PRIV int mso_reset_adc(struct sr_dev_inst *sdi)
 {
-	struct dev_context *devc = sdi->priv;
 	uint16_t ops[2];
 
 	ops[0] = mso_trans(REG_CTL1, BIT_CTL1_RESETADC);
 	ops[1] = mso_trans(REG_CTL1, 0);
 
 	sr_dbg("Requesting ADC reset.");
-	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
+	return mso_send_control_message(sdi, ARRAY_AND_SIZE(ops));
 }
 
 SR_PRIV int mso_reset_fsm(struct sr_dev_inst *sdi)
 {
-	struct dev_context *devc = sdi->priv;
 	uint16_t ops[1];
 
 	ops[0] = mso_trans(REG_CTL1, BIT_CTL1_RESETFSM);
 
 	sr_dbg("Requesting ADC reset.");
-	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
+	return mso_send_control_message(sdi, ARRAY_AND_SIZE(ops));
 }
 
 // SR_PRIV int mso_toggle_led(struct sr_dev_inst *sdi, int state)
@@ -478,28 +471,20 @@ SR_PRIV int mso_reset_fsm(struct sr_dev_inst *sdi)
 // 	ops[0] = mso_trans(REG_CTL1, devc->ctlbase1);
 
 // 	sr_dbg("Requesting LED toggle.");
-// 	return mso_send_control_message(devc->serial, ARRAY_AND_SIZE(ops));
+// 	return mso_send_control_message(sdi, ARRAY_AND_SIZE(ops));
 // }
 
-SR_PRIV void mso_stop_acquisition(struct sr_dev_inst *sdi)
+SR_PRIV int mso_acquisition_stop(struct sr_dev_inst *sdi)
 {
-	struct dev_context *devc;
-
-
-	devc = sdi->priv;
-	mso_reset_fsm(sdi);
-
-	// TODO: should it call mso_receive_data to flush input?
-
-	serial_source_remove(sdi->session, devc->serial);
-
-	std_session_send_df_end(sdi);
+	if (mso_reset_fsm(sdi) != SR_OK)
+		sr_warn("Reset MSO state machine failed");
+	// TODO: should it call mso_receive_data() here to read input buffer?
+	return std_serial_dev_acquisition_stop(sdi);
 }
 
 SR_PRIV int mso_clkrate_out(const struct sr_dev_inst *sdi)
 {
 	struct dev_context *devc = sdi->priv;
-	struct sr_serial_dev_inst *serial = devc->serial;
 
 	uint16_t ops[] = {
 		mso_trans(REG_CLKRATE1, (devc->cur_rate_regval >> 8) & 0xff),
@@ -507,46 +492,39 @@ SR_PRIV int mso_clkrate_out(const struct sr_dev_inst *sdi)
 	};
 
 	sr_dbg("Setting clkrate word to 0x%x.", devc->cur_rate_regval);
-	return mso_send_control_message(serial, ARRAY_AND_SIZE(ops));
+	return mso_send_control_message(sdi, ARRAY_AND_SIZE(ops));
 }
 
 SR_PRIV int mso_set_rate(const struct sr_dev_inst *sdi, uint32_t rate)
 {
 	struct dev_context *devc = sdi->priv;
 	unsigned int i;
-	int ret = SR_ERR;
 
 	for (i = 0; i < G_N_ELEMENTS(rate_map); i++) {
 		if (rate_map[i].rate == rate) {
 			devc->cur_rate = rate;
 			devc->cur_rate_regval = rate_map[i].val;
 			devc->slowmode = rate_map[i].slowmode;
-			if (ret == SR_OK) {
-			} else {
-				sr_err("Setting rate failed");
-			}
-			return ret;
+			return 0;
 		}
 	}
 
-	if (ret != SR_OK)
-		sr_err("Unsupported rate.");
-
-	return ret;
+	sr_err("Unsupported rate.");
+	return SR_ERR_SAMPLERATE;
 }
 
-SR_PRIV int mso_check_trigger(struct sr_serial_dev_inst *serial, uint8_t *info)
+SR_PRIV int mso_check_trigger(const struct sr_dev_inst *sdi, uint8_t *info)
 {
 	uint16_t ops[] = { mso_trans(REG_TRIGGER, 0) };
 	int ret;
 
 	sr_dbg("Requesting trigger state.");
-	ret = mso_send_control_message(serial, ARRAY_AND_SIZE(ops));
+	ret = mso_send_control_message(sdi, ARRAY_AND_SIZE(ops));
 	if (!info || ret != SR_OK)
 		return ret;
 
 	uint8_t buf = 0;
-	if (serial_read_blocking(serial, &buf, 1, 1000) != 1)	/* FIXME: Need timeout */
+	if (serial_read_blocking(mso_serial(sdi), &buf, 1, 1000) != 1)	/* FIXME: Need timeout */
 		ret = SR_ERR;
 	if (!info)
 		*info = buf;
@@ -567,10 +545,11 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 	struct dev_context *devc = sdi->priv;
 	int i;
 
+	(void)fd;
 	(void)revents;
 
 	uint8_t in[1024];
-	size_t s = serial_read_blocking(devc->serial, in, sizeof(in), 1000); // TODO: timeout
+	size_t s = serial_read_blocking(mso_serial(sdi), in, sizeof(in), 1000); // TODO: timeout
 
 	if (s <= 0)
 		return FALSE;
@@ -583,7 +562,7 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 			mso_read_buffer(sdi);
 			devc->buffer_n = 0;
 		} else {
-			mso_check_trigger(devc->serial, NULL);
+			mso_check_trigger(sdi, NULL);
 		}
 		return TRUE;
 	}

@@ -71,6 +71,7 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 	for (l = options; l; l = l->next) {
 		src = l->data;
 		switch (src->key) {
+		// TODO: is unused
 		case SR_CONF_CONN:
 			conn = g_variant_get_string(src->data, NULL);
 			break;
@@ -158,14 +159,13 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 			devc->protocol_trigger.mask[i] = 0xff;
 		}
 
-		devc->serial = sr_serial_dev_inst_new(conn, serialcomm);
-
 		struct sr_dev_inst *sdi = g_malloc0(sizeof(struct sr_dev_inst));
 		sdi->status = SR_ST_INACTIVE;
 		sdi->vendor = g_strdup(manufacturer);
 		sdi->model = g_strdup(product);
 		sdi->version = g_strdup(hwrev);
 		sdi->priv = devc;
+		sdi->conn = sr_serial_dev_inst_new(conn, serialcomm);
 
 		if (mso_set_rate(sdi, 1000000) != SR_OK) {
 			sr_err("Error setting initial rate");
@@ -188,11 +188,11 @@ static int dev_open(struct sr_dev_inst *sdi)
 
 	devc = sdi->priv;
 
-	if (serial_open(devc->serial, SERIAL_RDWR) != SR_OK)
+	if (std_serial_dev_open(sdi) != SR_OK)
 		return SR_ERR;
 
 	/* FIXME: discard serial buffer */
-	mso_check_trigger(devc->serial, &devc->trigger_state);
+	mso_check_trigger(sdi, &devc->trigger_state);
 	sr_dbg("Trigger state: 0x%x.", devc->trigger_state);
 
 	ret = mso_reset_adc(sdi);
@@ -202,7 +202,7 @@ static int dev_open(struct sr_dev_inst *sdi)
 	if (ret != SR_OK)
 		return ret;
 
-	mso_check_trigger(devc->serial, &devc->trigger_state);
+	mso_check_trigger(sdi, &devc->trigger_state);
 	sr_dbg("Trigger state: 0x%x.", devc->trigger_state);
 
 	//    ret = mso_reset_fsm(sdi);
@@ -246,7 +246,6 @@ static int config_set(uint32_t key, GVariant *data,
 {
 	struct dev_context *devc;
 	uint64_t num_samples;
-	const char *slope;
 	int trigger_pos;
 	double pos;
 	int idx;
@@ -336,6 +335,7 @@ static int config_list(uint32_t key, GVariant **data,
 
 static int dev_acquisition_start(const struct sr_dev_inst *sdi)
 {
+	struct sr_serial_dev_inst *serial = NULL;
 	struct dev_context *devc;
 	int ret = SR_ERR;
 
@@ -352,8 +352,8 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi)
 		return ret;
 
 	/* Start acquisition on the device. */
-	mso_check_trigger(devc->serial, &devc->trigger_state);
-	ret = mso_check_trigger(devc->serial, NULL);
+	mso_check_trigger(sdi, &devc->trigger_state);
+	ret = mso_check_trigger(sdi, NULL);
 	if (ret != SR_OK)
 		return ret;
 
@@ -365,7 +365,8 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi)
 	/* Our first channel is analog, the other 8 are of type 'logic'. */
 	/* TODO. */
 
-	serial_source_add(sdi->session, devc->serial, G_IO_IN, -1,
+	serial = sdi->conn;
+	serial_source_add(sdi->session, serial, G_IO_IN, -1,
 			mso_receive_data, (void*)sdi);
 
 	return SR_OK;
@@ -373,9 +374,7 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi)
 
 static int dev_acquisition_stop(struct sr_dev_inst *sdi)
 {
-	mso_stop_acquisition(sdi);
-
-	return SR_OK;
+	return mso_acquisition_stop(sdi);
 }
 
 static struct sr_dev_driver link_mso19_driver_info = {

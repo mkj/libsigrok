@@ -88,7 +88,6 @@ struct dev_context {
 	/* info */
 	uint8_t hwmodel;
 	uint8_t hwrev;
-	struct sr_serial_dev_inst *serial;
 //      uint8_t num_sample_rates;
 	/* calibration */
 	double vbit;
@@ -124,8 +123,7 @@ struct dev_context {
 
 SR_PRIV int mso_parse_serial(const char *iSerial, const char *iProduct,
 			     struct dev_context *ctx);
-SR_PRIV int mso_check_trigger(struct sr_serial_dev_inst *serial,
-			      uint8_t * info);
+SR_PRIV int mso_check_trigger(const struct sr_dev_inst *sdi, uint8_t * info);
 SR_PRIV int mso_reset_adc(struct sr_dev_inst *sdi);
 SR_PRIV int mso_set_rate(const struct sr_dev_inst *sdi, uint32_t rate);
 SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data);
@@ -137,7 +135,7 @@ SR_PRIV uint16_t mso_calc_raw_from_mv(struct dev_context *devc, float mv);
 SR_PRIV int mso_reset_fsm(struct sr_dev_inst *sdi);
 SR_PRIV int mso_toggle_led(struct sr_dev_inst *sdi, int state);
 
-SR_PRIV void mso_stop_acquisition(struct sr_dev_inst *sdi);
+SR_PRIV int mso_acquisition_stop(struct sr_dev_inst *sdi);
 SR_PRIV uint64_t *mso_get_sample_rates(size_t *ret_len);
 
 
