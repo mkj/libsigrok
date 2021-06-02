@@ -103,7 +103,7 @@ struct dev_context {
 	uint64_t cur_rate;
 	uint16_t cur_rate_regval;
 	uint8_t slowmode;
-	uint8_t dso_probe_attn;
+	float dso_probe_attn;
 	int8_t use_trigger;
 	uint8_t trigger_chan;
 	uint8_t trigger_slope;

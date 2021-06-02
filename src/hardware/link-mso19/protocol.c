@@ -544,6 +544,7 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 	struct sr_dev_inst *sdi = cb_data;
 	struct dev_context *devc = sdi->priv;
 	int i;
+	int j;
 
 	(void)fd;
 	(void)revents;
@@ -576,6 +577,7 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 		return TRUE;
 
 	/* do the conversion */
+	// int sum[8] = {0,0,0,0,0,0,0,0};
 	uint8_t logic_out[1024];
 	uint16_t analog_out[1024];
 	for (i = 0; i < 1024; i++) {
@@ -583,7 +585,13 @@ SR_PRIV int mso_receive_data(int fd, int revents, void *cb_data)
 		    (((uint16_t)devc->buffer[i * 3 + 1] & 0xf) << 6);
 		logic_out[i] = ((devc->buffer[i * 3 + 1] & 0x30) >> 4) |
 		    ((devc->buffer[i * 3 + 2] & 0x3f) << 2);
+		// for (j = 0; j < 8; j++) {
+		// 	sum[j] += (logic_out[i]) << j;
+		// }
 	}
+	// for (j = 0; j < 8; j++) {
+	// 	sr_info("sum[%d] = %d\n", j, sum[j]);
+	// }
 
 	float analog_volts[1024];
 	mso_calc_mv_from_raw(devc, analog_out, analog_volts, 1024);
@@ -630,7 +638,6 @@ static int mso_configure_channels(const struct sr_dev_inst *sdi)
 	devc->la_trigger_mask = 0xFF;	//the mask for the LA_TRIGGER (bits set to 0 matter, those set to 1 are ignored).
 	devc->la_trigger = 0x00;	//The value of the LA byte that generates a trigger event (in that mode).
 	devc->dso_trigger_voltage = 3;
-	devc->dso_probe_attn = 1; // TODO use SR_CONF_PROBE_FACTOR
 	devc->trigger_outsrc = 0;
 	devc->trigger_chan = 3;	//LA combination trigger
 	devc->use_trigger = FALSE;

@@ -37,6 +37,7 @@ static const uint32_t devopts[] = {
 	SR_CONF_CAPTURE_RATIO | SR_CONF_SET,
 	SR_CONF_RLE | SR_CONF_SET,
 	SR_CONF_COUPLING | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_PROBE_FACTOR | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 	SR_CONF_CONTINUOUS,
 };
 
@@ -56,6 +57,10 @@ static const char *trigger_slopes[2] = {
 
 // cast to a bool dc_coupling, so keep this ordered.
 static const char *acdc_coupling[] = { "AC", "DC" };
+
+static const uint64_t probe_factor[] = {
+	1, 2, 5, 10, 20, 50, 100, 200, 500, 1000,
+};
 
 static GSList *scan(struct sr_dev_driver *di, GSList *options)
 {
@@ -167,9 +172,11 @@ static GSList *scan(struct sr_dev_driver *di, GSList *options)
 		sdi->priv = devc;
 		sdi->conn = sr_serial_dev_inst_new(conn, serialcomm);
 
+		/* Initial config */
 		if (mso_set_rate(sdi, 1000000) != SR_OK) {
 			sr_err("Error setting initial rate");
 		}
+		devc->dso_probe_attn = 1;
 
 		for (i = 0; i < ARRAY_SIZE(channel_names); i++) {
 			chtype = (i == 0) ? SR_CHANNEL_ANALOG : SR_CHANNEL_LOGIC;
@@ -225,11 +232,12 @@ static int config_get(uint32_t key, GVariant **data,
 
 	devc = sdi->priv;
 
-	printf("mso config_get %u\n", key);
-
 	switch (key) {
 	case SR_CONF_SAMPLERATE:
 		*data = g_variant_new_uint64(devc->cur_rate);
+		break;
+	case SR_CONF_PROBE_FACTOR:
+		*data = g_variant_new_uint64(devc->dso_probe_attn);
 		break;
 	case SR_CONF_COUPLING:
 		*data = g_variant_new_string(acdc_coupling[(int)devc->dc_coupling]);
@@ -255,7 +263,6 @@ static int config_set(uint32_t key, GVariant *data,
 	devc = sdi->priv;
 
 	char *p = g_variant_print(data, TRUE);
-	printf("mso config_set %u = %s\n", key, p);
 	g_free(p);
 
 	switch (key) {
@@ -285,6 +292,9 @@ static int config_set(uint32_t key, GVariant *data,
 		trigger_pos = (int)pos;
 		devc->trigger_holdoff[0] = trigger_pos & 0xff;
 		break;
+	case SR_CONF_PROBE_FACTOR:
+		devc->dso_probe_attn = g_variant_get_uint64(data);
+		break;
 	case SR_CONF_COUPLING:
 		if ((idx = std_str_idx(data, ARRAY_AND_SIZE(acdc_coupling))) < 0)
 			return SR_ERR_ARG;
@@ -305,7 +315,7 @@ static int config_list(uint32_t key, GVariant **data,
 	size_t len;
 	uint64_t *rates;
 
-	printf("mso %s %u\n", __func__, key);
+	(void)cg;
 
 	switch (key) {
 	case SR_CONF_DEVICE_OPTIONS:
@@ -319,15 +329,16 @@ static int config_list(uint32_t key, GVariant **data,
 	// case SR_CONF_TRIGGER_TYPE:
 	// 	*data = g_variant_new_string(TRIGGER_TYPE);
 	// 	break;
+	case SR_CONF_PROBE_FACTOR:
+		*data = std_gvar_array_u64(ARRAY_AND_SIZE(probe_factor));
+		break;
 	case SR_CONF_COUPLING:
 		*data = g_variant_new_strv(acdc_coupling, G_N_ELEMENTS(acdc_coupling));
 		break;
 	default:
-		printf("return SR_ERR_NA\n");
 		return SR_ERR_NA;
 	}
 	char *p = g_variant_print(*data, TRUE);
-	printf("return OK, %s\n", p);
 	g_free(p);
 
 	return SR_OK;
