@@ -4,6 +4,7 @@
  * Copyright (C) 2011 Daniel Ribeiro <drwyrm@gmail.com>
  * Copyright (C) 2012 Renato Caldas <rmsc@fe.up.pt>
  * Copyright (C) 2013 Lior Elazary <lelazary@yahoo.com>
+ * Copyright (C) 2021 Matt Johnston <matt@ucc.asn.au>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

@@ -4,6 +4,8 @@
  * Copyright (C) 2011 Daniel Ribeiro <drwyrm@gmail.com>
  * Copyright (C) 2012 Renato Caldas <rmsc@fe.up.pt>
  * Copyright (C) 2013 Lior Elazary <lelazary@yahoo.com>
+ * Copyright (C) 2021 Matt Johnston <matt@ucc.asn.au>
+ * Copyright (C) 2015 John Yeh <jyeh@linkinstruments.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,6 +20,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+/* Some code and details are based on
+ * https://github.com/tkrmnz/mso19fcgi by John Yeh
+ * under the GPLv3 or later */
 
 #include <config.h>
 #include "protocol.h"
